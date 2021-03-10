@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
@@ -9,33 +9,37 @@
     <com.github.barteksc.pdfviewer.PDFView
         android:id="@+id/pdf_view"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@id/button_signature"
-        app:layout_constraintTop_toTopOf="parent" />
+        android:layout_height="match_parent"
+        android:layout_alignParentTop="true"
+        android:layout_alignBottom="@id/view_divider"/>
 
     <View
+        android:id="@+id/view_divider"
         android:layout_width="match_parent"
         android:layout_height="5dp"
         android:background="@color/black"
-        app:layout_constraintBottom_toTopOf="@id/button_signature"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        android:layout_alignTop="@id/button_signature"/>
 
     <Button
         android:id="@+id/button_signature"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Get Signature"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        android:layout_alignParentRight="true"
+        android:layout_alignParentBottom="true"/>
+
+    <Button
+        android:id="@+id/button_attach_sign"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Attach Signature"
+        android:layout_alignParentBottom="true"/>
 
     <include
         android:id="@+id/layout_signed"
         layout="@layout/layout_signed_image"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:elevation="30dp"
         android:visibility="gone" />
 
     <include
@@ -43,6 +47,5 @@
         layout="@layout/layout_insert_signature"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:elevation="30dp"
         android:visibility="gone" />
-</androidx.constraintlayout.widget.ConstraintLayout>
+</RelativeLayout>
