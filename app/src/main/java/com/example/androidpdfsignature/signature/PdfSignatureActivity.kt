@@ -6,30 +6,26 @@ import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
-import android.net.Uri
 import android.os.Bundle
 import android.util.DisplayMetrics
-import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.widget.RelativeLayout
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.doOnLayout
-import androidx.core.view.doOnPreDraw
 import com.example.androidpdfsignature.R
-import com.github.gcacace.signaturepad.views.SignaturePad
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
-import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
+import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import kotlinx.android.synthetic.main.activity_pdf_signature.*
-import kotlinx.android.synthetic.main.layout_insert_signature.*
 import kotlinx.android.synthetic.main.layout_insert_signature.view.*
-import kotlinx.android.synthetic.main.layout_signed_image.*
 import kotlinx.android.synthetic.main.layout_signed_image.view.*
-import java.io.*
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.OutputStream
 import kotlin.math.max
 import kotlin.math.min
 
@@ -40,6 +36,14 @@ class PdfSignatureActivity : AppCompatActivity() {
     private var mYDelta = 0
     private var mRootWidth = 0
     private var mRootHeight = 0
+
+    private val document: PDDocument by lazy {
+        PDDocument.load(assets.open("sample.pdf"))
+    }
+
+    private val page: PDPage by lazy {
+        document.getPage(0)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,12 +69,7 @@ class PdfSignatureActivity : AppCompatActivity() {
             button_attach_sign?.visibility = View.GONE
             layout_signed?.visibility = View.GONE
 
-//            var arr1 = IntArray(2)
-//            var arr2 = IntArray(2)
-//            viewxx.getLocationOnScreen(arr1)
-//            viewxx.getLocationInWindow(arr2)
-//            Log.d("zxczxc", "screenH = $mRootHeight  - topPad = ${arr1[0]} - ${arr1[1]}  -- bottom = ${arr2[0]} - ${arr2[1]}")
-//            Log.d("zxczxc", "screenH = $mRootHeight  - topPad = ${viewxx.height}")
+
         }
 
         // CLick save để lưu lại signature vào imageview
@@ -79,7 +78,9 @@ class PdfSignatureActivity : AppCompatActivity() {
             button_signature?.visibility = View.VISIBLE
             button_attach_sign?.visibility = View.VISIBLE
 
-            layout_signed.image_signed?.setImageBitmap(layout_signature.signature_pad.transparentSignatureBitmap)
+            val originBitmap = layout_signature.signature_pad.transparentSignatureBitmap
+            val cropTrimBitmap = CropTransparent().crop(originBitmap)
+            layout_signed.image_signed?.setImageBitmap(cropTrimBitmap)
             layout_signed?.visibility = View.VISIBLE
         }
 
@@ -138,6 +139,7 @@ class PdfSignatureActivity : AppCompatActivity() {
 
             }
             .load()
+        pdf_view.fitToWidth()
     }
 
     private fun bitmapToFile(bitmap: Bitmap): String {
@@ -151,7 +153,12 @@ class PdfSignatureActivity : AppCompatActivity() {
         try {
             // Compress the bitmap and save in jpg format
             val stream: OutputStream = FileOutputStream(file)
-            var scaleBitmap = Bitmap.createScaledBitmap(bitmap, 200, 100, false)
+            var scaleBitmap = Bitmap.createScaledBitmap(
+                bitmap,
+                (bitmap.width * (page.bBox.width / pdf_view.optimalPageWidth)).toInt(),
+                (bitmap.height * (page.bBox.height / pdf_view.optimalPageHeight)).toInt(),
+                false
+            )
             scaleBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
             stream.flush()
             stream.close()
@@ -163,29 +170,23 @@ class PdfSignatureActivity : AppCompatActivity() {
 
     private fun fillForm(imagePath: String) {
         try {
-            val document: PDDocument = PDDocument.load(assets.open("sample.pdf"))
-            val page: PDPage = document.getPage(0)
-
             var contentStream = PDPageContentStream(document, page, true, true)
-//            contentStream.drawImage(image,
-//                iv_sticker.getX() * (currentPage.getMediaBox().getWidth() / pdfView.getOptimalPageWidth()),
-//                (currentPage.getMediaBox().getWidth() - (iv_sticker.getY() * (currentPage.getMediaBox().getHeight() / pdfView.getOptimalPageHeight()))) - (height),
-//                width, height);
-            // Draw the red overlay image
-            val alphaImage = BitmapFactory.decodeFile(imagePath)
-            val alphaXimage = LosslessFactory.createFromImage(document, alphaImage)
-//            val x_image = x_pdf * width_image / width_page
-//            val y_image = (height_pdf - y_pdf) * height_image / height_pdf
-            val x = image_signed.x * (page.bBox.width / pdf_view.optimalPageWidth)
-            val y = (page.bBox.width - (image_signed.y * (page.bBox.height / pdf_view.optimalPageHeight)))
-            contentStream.drawImage(alphaXimage, x, y - alphaImage.height)
-            Log.d("zxczxc", "${page.bBox.height}")
 
+            // Draw the red overlay image
+            val insertImage = BitmapFactory.decodeFile(imagePath)
+            val insertXImage = LosslessFactory.createFromImage(document, insertImage)
+            val x = layout_signed.x * (page.bBox.width / pdf_view.optimalPageWidth)
+            val y = (page.bBox.height - (layout_signed.y * (page.bBox.height / pdf_view.optimalPageHeight)))
+
+            contentStream.drawImage(
+                insertXImage,
+                x,
+                y - insertImage.height
+            )
             contentStream.fill()
             // Make sure that the content stream is closed:
             contentStream.close()
 
-            //
             val paths: String = applicationContext.cacheDir.absolutePath + "/FilledForm.pdf"
 
             document.save(paths)
