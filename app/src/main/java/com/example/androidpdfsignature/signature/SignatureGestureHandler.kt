@@ -1,12 +1,15 @@
 package com.example.androidpdfsignature.signature
 
+import android.animation.ObjectAnimator
 import android.graphics.Matrix
 import android.graphics.PointF
+import android.os.Build
 import android.view.MotionEvent
 import android.view.View
 import android.widget.ImageView
 import android.widget.RelativeLayout
-import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.annotation.RequiresApi
+import java.text.DecimalFormat
 import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.min
@@ -17,9 +20,6 @@ class SignatureGestureHandler constructor(
     private val rootHeight: Int
 ) {
 
-    private var mXDelta = 0
-    private var mYDelta = 0
-
     companion object {
         private const val MODE_NONE = 0
         private const val MODE_DRAG = 1
@@ -27,6 +27,8 @@ class SignatureGestureHandler constructor(
     }
 
     private var currentGestureMode = MODE_NONE
+    private var mXDelta = 0
+    private var mYDelta = 0
 
     // var for zoom image signature
     private var start = PointF()
@@ -38,10 +40,16 @@ class SignatureGestureHandler constructor(
     private val savedMatrix = Matrix()
     private val matrix = Matrix()
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun handleTouchAction(view: View, event: MotionEvent) {
         val xScreenTouch = event.rawX.toInt() // x location relative to the screen
         val yScreenTouch = event.rawY.toInt() // y location relative to the screen
 
+//        val df = DecimalFormat("##.####")
+//        var originW = java.lang.Double.valueOf(df.format(view.width))
+//        var originH = java.lang.Double.valueOf(df.format(view.height))
+//
+//        val originImageRatio = originW / originH
         when (event.action and MotionEvent.ACTION_MASK) {
             MotionEvent.ACTION_DOWN -> {
                 currentGestureMode = MODE_DRAG
@@ -71,6 +79,7 @@ class SignatureGestureHandler constructor(
                 lastEvent = null
             }
             MotionEvent.ACTION_UP -> {
+                start = PointF()
                 currentGestureMode = MODE_NONE
             }
             MotionEvent.ACTION_MOVE -> {
@@ -94,7 +103,8 @@ class SignatureGestureHandler constructor(
                     if (newDist > 10f) {
                         matrix.set(savedMatrix)
                         val scale = newDist / oldDist
-                        matrix.postScale(scale, scale, mid.x, mid.y)
+//                        matrix.postScale(scale, scale, mid.x, mid.y)
+                        matrix.postScale(scale, scale)
                     }
 
                     if (lastEvent != null && event.pointerCount == 3) {
@@ -112,7 +122,15 @@ class SignatureGestureHandler constructor(
                 }
             }
         }
-        (view as ConstraintLayout).animationMatrix = matrix
+        (view as ImageView).animationMatrix = matrix
+    }
+
+    fun getImageScale(): Float {
+        val f = FloatArray(9)
+        matrix.getValues(f)
+
+        // scalex = scaleY
+        return f[Matrix.MSCALE_X]
     }
 
     /**
