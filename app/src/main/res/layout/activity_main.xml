@@ -21,8 +21,15 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Demo Pdf Signature"
-        app:layout_constraintTop_toBottomOf="@id/button_demo1"
         app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent" />
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/button_demo1" />
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Demo attach sign. Không xử lý phần attach trên toàn bộ pdf. Giả sử lúc làm thực tế thì show cả pdf gôm 3 trang, cho user chọn thì sẽ mở màn mới chỉ có 1 trang đó để attach. Chứ k cho attach ngay trên màn có 3 trang đc scroll.Demo này fix luôn mở trang đâu tiên"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/button_demo2" />
 </androidx.constraintlayout.widget.ConstraintLayout>

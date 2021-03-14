@@ -6,54 +6,60 @@ import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
-import android.net.Uri
 import android.os.Bundle
 import android.util.DisplayMetrics
 import android.util.Log
-import android.view.MotionEvent
 import android.view.View
-import android.widget.RelativeLayout
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.doOnLayout
-import androidx.core.view.doOnPreDraw
 import com.example.androidpdfsignature.R
-import com.github.gcacace.signaturepad.views.SignaturePad
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
-import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
+import com.tom_roush.pdfbox.rendering.PDFRenderer
 import kotlinx.android.synthetic.main.activity_pdf_signature.*
-import kotlinx.android.synthetic.main.layout_insert_signature.*
 import kotlinx.android.synthetic.main.layout_insert_signature.view.*
-import kotlinx.android.synthetic.main.layout_signed_image.*
-import kotlinx.android.synthetic.main.layout_signed_image.view.*
-import java.io.*
-import kotlin.math.max
-import kotlin.math.min
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.OutputStream
 
 
-class PdfSignatureActivity : AppCompatActivity() {
+class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
 
-    private var mXDelta = 0
-    private var mYDelta = 0
-    private var mRootWidth = 0
-    private var mRootHeight = 0
+    companion object {
+        private const val PDF_NAME = "sample5.pdf"
+    }
+
+    private var signatureGestureHandler: SignatureGestureHandler? = null
+
+    private var document: PDDocument? = null
+
+    private var page: PDPage? = null
+        get() = document?.getPage(currentPage)
+
+    private var currentPage = 0
+    private val displayMetrics = DisplayMetrics()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_pdf_signature)
 
-        // Tính screen size cho move x,y của signature img
-        val displayMetrics = DisplayMetrics()
-        windowManager.defaultDisplay.getMetrics(displayMetrics)
-        mRootHeight = displayMetrics.heightPixels
-        mRootWidth = displayMetrics.widthPixels
+        if (document == null) document = PDDocument.load(assets.open(PDF_NAME))
 
+        // Tính screen size cho move x,y của signature img
+        windowManager.defaultDisplay.getMetrics(displayMetrics)
+        signatureGestureHandler =
+            SignatureGestureHandler(
+                displayMetrics.widthPixels,
+                displayMetrics.heightPixels,
+                image_choose_pdf
+            )
 
         // show pdf view
-        showPdfFromAssets("sample.pdf")
+        showPdfFromAssets(PDF_NAME)
 
         // setup drag signature imageview
         setupSignatureDrag()
@@ -63,68 +69,62 @@ class PdfSignatureActivity : AppCompatActivity() {
             layout_signature?.visibility = View.VISIBLE
             button_signature?.visibility = View.GONE
             button_attach_sign?.visibility = View.GONE
-            layout_signed?.visibility = View.GONE
-
-//            var arr1 = IntArray(2)
-//            var arr2 = IntArray(2)
-//            viewxx.getLocationOnScreen(arr1)
-//            viewxx.getLocationInWindow(arr2)
-//            Log.d("zxczxc", "screenH = $mRootHeight  - topPad = ${arr1[0]} - ${arr1[1]}  -- bottom = ${arr2[0]} - ${arr2[1]}")
-//            Log.d("zxczxc", "screenH = $mRootHeight  - topPad = ${viewxx.height}")
+            image_signed?.visibility = View.GONE
         }
 
-        // CLick save để lưu lại signature vào imageview
+        // Click save để lưu lại signature vào imageview
         layout_signature?.button_save_signature?.setOnClickListener {
+            if (document == null) document = PDDocument.load(assets.open(PDF_NAME))
+
             layout_signature?.visibility = View.GONE
             button_signature?.visibility = View.VISIBLE
             button_attach_sign?.visibility = View.VISIBLE
 
-            layout_signed.image_signed?.setImageBitmap(layout_signature.signature_pad.transparentSignatureBitmap)
-            layout_signed?.visibility = View.VISIBLE
+            val originBitmap = layout_signature.signature_pad.transparentSignatureBitmap
+            val cropTrimBitmap = CropTransparent().crop(originBitmap)
+            image_signed?.setImageBitmap(cropTrimBitmap)
+            image_signed?.visibility = View.VISIBLE
+
+            renderPdfToImage()
         }
 
         // insert signature vào pdf
         button_attach_sign?.setOnClickListener {
             val drawable: BitmapDrawable =
-                layout_signed.image_signed.drawable as BitmapDrawable
+                image_signed.drawable as BitmapDrawable
             val bitmap: Bitmap = drawable.bitmap
             val path = bitmapToFile(bitmap)
-            fillForm(path)
+            fillForm(path ?: return@setOnClickListener)
+        }
+    }
+
+    /**
+     * Image của page pdf. Convert về image để có thể apply view zoom kính lúp
+     * Phải đảm bảo hiển thị image này giống y hệt page pdf, cả về content và tọa độ
+     */
+    private fun renderPdfToImage() {
+        // Render the page and save it to an image file
+        try {
+            // Load in an already created PDF
+            val document: PDDocument = PDDocument.load(assets.open(PDF_NAME))
+            // Create a renderer for the document
+            val renderer = PDFRenderer(document)
+            // Render the image to an RGB Bitmap
+           val  pageImage = renderer.renderImage(currentPage, 1f, Bitmap.Config.ARGB_8888)
+            image_choose_pdf?.setImageBitmap(pageImage)
+            image_choose_pdf?.visibility = View.VISIBLE
+            pdf_view?.visibility = View.INVISIBLE
+            image_choose_pdf.setMagnifierInteraction(this)
+        } catch (e: IOException) {
+            Log.e("PdfBox-Android-Sample", "Exception thrown while rendering file", e)
         }
     }
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupSignatureDrag() {
-        layout_signed?.apply {
+        image_signed?.apply {
             setOnTouchListener { view, event ->
-                val xScreenTouch = event.rawX.toInt() // x location relative to the screen
-                val yScreenTouch = event.rawY.toInt() // y location relative to the screen
-
-                when (event.action and MotionEvent.ACTION_MASK) {
-                    MotionEvent.ACTION_DOWN -> {
-                        val lParams: RelativeLayout.LayoutParams =
-                            view.layoutParams as RelativeLayout.LayoutParams
-                        mXDelta = xScreenTouch - lParams.leftMargin
-                        mYDelta = yScreenTouch - lParams.topMargin
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val layoutParams: RelativeLayout.LayoutParams = view
-                            .layoutParams as RelativeLayout.LayoutParams
-                        layoutParams.leftMargin = max(
-                            0,
-                            min(mRootWidth - view.width, xScreenTouch - mXDelta)
-                        )
-                        layoutParams.topMargin = max(
-                            0,
-                            min(
-                                mRootHeight - view.height,
-                                yScreenTouch - mYDelta
-                            )
-                        )
-                        view.layoutParams = layoutParams
-                    }
-                }
-
+                signatureGestureHandler?.handleTouchAction(view, event)
                 true
             }
         }
@@ -132,15 +132,31 @@ class PdfSignatureActivity : AppCompatActivity() {
 
     private fun showPdfFromAssets(pdfName: String) {
         pdf_view.fromAsset(pdfName)
+            .onPageChange { page, _ ->
+                currentPage = page
+            }
             .password(null) // if password protected, then write password
-            .defaultPage(0) // set the default page to open
-            .onPageError { page, _ ->
+            .defaultPage(currentPage) // set the default page to open
+            .onPageError { _, _ ->
 
             }
+            .enableSwipe(false)
+                // k đc dùng cái này mà phải define cụ thể spacing() -> xem doc
+//            .autoSpacing(true)
+                // spacing chỉ bật ở màn single page pdf sau khi user chọn để sign pdf
+                // màn đọc pdf phải bỏ đi
+            .spacing(displayMetrics.heightPixels)
+            .enableDoubletap(false) // tắt zoom bằng click
             .load()
+
+        // tắt zoom swipe
+        // Case này k cần tương tác j nên set như này ok, vì n tắt cả scroll
+        pdf_view.setOnTouchListener(null)
     }
 
-    private fun bitmapToFile(bitmap: Bitmap): String {
+    private fun bitmapToFile(bitmap: Bitmap): String? {
+        if (document == null || page == null) return null
+
         // Get the context wrapper
         val wrapper = ContextWrapper(applicationContext)
 
@@ -148,10 +164,18 @@ class PdfSignatureActivity : AppCompatActivity() {
         var file = wrapper.getDir("Images", Context.MODE_PRIVATE)
         file = File(file, "saved-signature.png")
 
+        val scaleByGesture = signatureGestureHandler?.getImageScale() ?: 1f
+
         try {
             // Compress the bitmap and save in jpg format
             val stream: OutputStream = FileOutputStream(file)
-            var scaleBitmap = Bitmap.createScaledBitmap(bitmap, 200, 100, false)
+            val pageSize = pdf_view.getPageSize(currentPage)
+            var scaleBitmap = Bitmap.createScaledBitmap(
+                bitmap,
+                (bitmap.width * (page!!.bBox.width / pageSize.width) * scaleByGesture).toInt(),
+                (bitmap.height * (page!!.bBox.height / pageSize.height) * scaleByGesture).toInt(),
+                false
+            )
             scaleBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
             stream.flush()
             stream.close()
@@ -162,39 +186,51 @@ class PdfSignatureActivity : AppCompatActivity() {
     }
 
     private fun fillForm(imagePath: String) {
+        if (document == null || page == null) return
         try {
-            val document: PDDocument = PDDocument.load(assets.open("sample.pdf"))
-            val page: PDPage = document.getPage(0)
-
             var contentStream = PDPageContentStream(document, page, true, true)
-//            contentStream.drawImage(image,
-//                iv_sticker.getX() * (currentPage.getMediaBox().getWidth() / pdfView.getOptimalPageWidth()),
-//                (currentPage.getMediaBox().getWidth() - (iv_sticker.getY() * (currentPage.getMediaBox().getHeight() / pdfView.getOptimalPageHeight()))) - (height),
-//                width, height);
-            // Draw the red overlay image
-            val alphaImage = BitmapFactory.decodeFile(imagePath)
-            val alphaXimage = LosslessFactory.createFromImage(document, alphaImage)
-//            val x_image = x_pdf * width_image / width_page
-//            val y_image = (height_pdf - y_pdf) * height_image / height_pdf
-            val x = image_signed.x * (page.bBox.width / pdf_view.optimalPageWidth)
-            val y = (page.bBox.width - (image_signed.y * (page.bBox.height / pdf_view.optimalPageHeight)))
-            contentStream.drawImage(alphaXimage, x, y - alphaImage.height)
-            Log.d("zxczxc", "${page.bBox.height}")
 
+            // Draw the red overlay image
+            val pageSize = pdf_view.getPageSize(currentPage)
+
+            val insertImage = BitmapFactory.decodeFile(imagePath)
+            val insertXImage = LosslessFactory.createFromImage(document, insertImage)
+            val x = image_signed.x * (page!!.bBox.width / pageSize.width)
+            val y =
+                (page!!.bBox.height - (image_signed.y * (page!!.bBox.height / pageSize.height)))
+
+            contentStream.drawImage(
+                insertXImage,
+                x,
+                y - insertImage.height
+            )
             contentStream.fill()
             // Make sure that the content stream is closed:
             contentStream.close()
 
-            //
             val paths: String = applicationContext.cacheDir.absolutePath + "/FilledForm.pdf"
 
-            document.save(paths)
-            document.close()
+            document!!.save(paths)
+            document!!.close()
+            document = null
 
             Toast.makeText(this, "Insert Done - check internal cache storage", Toast.LENGTH_SHORT)
                 .show()
         } catch (ex: Exception) {
-
+            ex.printStackTrace()
         }
     }
+
+    override fun getSignatureView(): ImageView {
+        return image_signed
+    }
+
+    override fun getBitmapScale(): Float {
+        return signatureGestureHandler?.getImageScale() ?: 1f
+    }
+}
+
+interface IMagnifierInteraction {
+    fun getSignatureView(): ImageView
+    fun getBitmapScale(): Float
 }
