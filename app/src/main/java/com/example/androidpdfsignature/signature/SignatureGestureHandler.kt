@@ -1,15 +1,13 @@
 package com.example.androidpdfsignature.signature
 
-import android.animation.ObjectAnimator
 import android.graphics.Matrix
 import android.graphics.PointF
-import android.os.Build
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 import android.widget.ImageView
 import android.widget.RelativeLayout
-import androidx.annotation.RequiresApi
-import java.text.DecimalFormat
+import com.example.androidpdfsignature.view_magnifier.ImageMagnifierView
 import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.min
@@ -17,7 +15,8 @@ import kotlin.math.min
 
 class SignatureGestureHandler constructor(
     private val rootWidth: Int,
-    private val rootHeight: Int
+    private val rootHeight: Int,
+    private val imageMagnifierView: ImageMagnifierView
 ) {
 
     companion object {
@@ -39,8 +38,6 @@ class SignatureGestureHandler constructor(
     private var lastEvent: FloatArray? = FloatArray(4)
     private val savedMatrix = Matrix()
     private val matrix = Matrix()
-
-    @RequiresApi(Build.VERSION_CODES.Q)
     fun handleTouchAction(view: View, event: MotionEvent) {
         val xScreenTouch = event.rawX.toInt() // x location relative to the screen
         val yScreenTouch = event.rawY.toInt() // y location relative to the screen
@@ -54,7 +51,7 @@ class SignatureGestureHandler constructor(
             MotionEvent.ACTION_DOWN -> {
                 currentGestureMode = MODE_DRAG
                 savedMatrix.set(matrix)
-                start.set(event.getX(), event.getY())
+                start.set(event.x, event.y)
                 lastEvent = FloatArray(4)
                 val lParams: RelativeLayout.LayoutParams =
                     view.layoutParams as RelativeLayout.LayoutParams
@@ -81,23 +78,48 @@ class SignatureGestureHandler constructor(
             MotionEvent.ACTION_UP -> {
                 start = PointF()
                 currentGestureMode = MODE_NONE
+                // Trigger tắt zoom kính lúp trên target image (đc convert từ page pdf qua)
+                val motionEventDown = MotionEvent.obtain(
+                    SystemClock.uptimeMillis(),
+                    SystemClock.uptimeMillis() + 100,
+                    MotionEvent.ACTION_UP,
+                    0f, // tọa độ của action = 0, vì ta chỉ cần magnifier biết về action, còn tọa độ trigger thì nó tự handle
+                    0f,
+                    0
+                )
+                imageMagnifierView.dispatchTouchEvent(motionEventDown)
             }
             MotionEvent.ACTION_MOVE -> {
                 if (currentGestureMode == MODE_DRAG) {
                     val layoutParams: RelativeLayout.LayoutParams = view
                         .layoutParams as RelativeLayout.LayoutParams
-                    layoutParams.leftMargin = max(
+                    val newX = max(
                         0,
                         min(rootWidth - view.width, xScreenTouch - mXDelta)
                     )
-                    layoutParams.topMargin = max(
+
+                    val newY = max(
                         0,
                         min(
                             rootHeight - view.height,
                             yScreenTouch - mYDelta
                         )
                     )
+
+                    layoutParams.leftMargin = newX
+                    layoutParams.topMargin = newY
                     view.layoutParams = layoutParams
+
+                    // Trigger zoom kính lúp trên target image (đc convert từ page pdf qua)
+                    val motionEventDown = MotionEvent.obtain(
+                        SystemClock.uptimeMillis(),
+                        SystemClock.uptimeMillis() + 100,
+                        MotionEvent.ACTION_DOWN,
+                        0f, // tọa độ của action = 0, vì ta chỉ cần magnifier biết về action, còn tọa độ trigger thì nó tự handle
+                        0f,
+                        0
+                    )
+                    imageMagnifierView.dispatchTouchEvent(motionEventDown)
                 } else if (currentGestureMode == MODE_ZOOM) {
                     val newDist = spacing(event)
                     if (newDist > 10f) {

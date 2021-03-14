@@ -6,19 +6,19 @@ import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
-import android.os.Build
 import android.os.Bundle
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.View
+import android.widget.ImageView
 import android.widget.Toast
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import com.example.androidpdfsignature.R
-import com.github.barteksc.pdfviewer.util.FitPolicy
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
+import com.tom_roush.pdfbox.rendering.PDFRenderer
 import kotlinx.android.synthetic.main.activity_pdf_signature.*
 import kotlinx.android.synthetic.main.layout_insert_signature.view.*
 import java.io.File
@@ -27,7 +27,11 @@ import java.io.IOException
 import java.io.OutputStream
 
 
-class PdfSignatureActivity : AppCompatActivity() {
+class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
+
+    companion object {
+        private const val PDF_NAME = "sample5.pdf"
+    }
 
     private var signatureGestureHandler: SignatureGestureHandler? = null
 
@@ -43,23 +47,22 @@ class PdfSignatureActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_pdf_signature)
 
-        if (document == null) document = PDDocument.load(assets.open("sample3.pdf"))
+        if (document == null) document = PDDocument.load(assets.open(PDF_NAME))
 
         // Tính screen size cho move x,y của signature img
         windowManager.defaultDisplay.getMetrics(displayMetrics)
         signatureGestureHandler =
             SignatureGestureHandler(
                 displayMetrics.widthPixels,
-                displayMetrics.heightPixels
+                displayMetrics.heightPixels,
+                image_choose_pdf
             )
 
         // show pdf view
-        showPdfFromAssets("sample3.pdf")
+        showPdfFromAssets(PDF_NAME)
 
         // setup drag signature imageview
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            setupSignatureDrag()
-        }
+        setupSignatureDrag()
 
         // Click mở signature pad lấy chữ kí
         button_signature?.setOnClickListener {
@@ -71,7 +74,7 @@ class PdfSignatureActivity : AppCompatActivity() {
 
         // Click save để lưu lại signature vào imageview
         layout_signature?.button_save_signature?.setOnClickListener {
-            if (document == null) document = PDDocument.load(assets.open("sample3.pdf"))
+            if (document == null) document = PDDocument.load(assets.open(PDF_NAME))
 
             layout_signature?.visibility = View.GONE
             button_signature?.visibility = View.VISIBLE
@@ -81,6 +84,8 @@ class PdfSignatureActivity : AppCompatActivity() {
             val cropTrimBitmap = CropTransparent().crop(originBitmap)
             image_signed?.setImageBitmap(cropTrimBitmap)
             image_signed?.visibility = View.VISIBLE
+
+            renderPdfToImage()
         }
 
         // insert signature vào pdf
@@ -93,7 +98,28 @@ class PdfSignatureActivity : AppCompatActivity() {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.Q)
+    /**
+     * Image của page pdf. Convert về image để có thể apply view zoom kính lúp
+     * Phải đảm bảo hiển thị image này giống y hệt page pdf, cả về content và tọa độ
+     */
+    private fun renderPdfToImage() {
+        // Render the page and save it to an image file
+        try {
+            // Load in an already created PDF
+            val document: PDDocument = PDDocument.load(assets.open(PDF_NAME))
+            // Create a renderer for the document
+            val renderer = PDFRenderer(document)
+            // Render the image to an RGB Bitmap
+           val  pageImage = renderer.renderImage(currentPage, 1f, Bitmap.Config.ARGB_8888)
+            image_choose_pdf?.setImageBitmap(pageImage)
+            image_choose_pdf?.visibility = View.VISIBLE
+            pdf_view?.visibility = View.INVISIBLE
+            image_choose_pdf.setMagnifierInteraction(this)
+        } catch (e: IOException) {
+            Log.e("PdfBox-Android-Sample", "Exception thrown while rendering file", e)
+        }
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     private fun setupSignatureDrag() {
         image_signed?.apply {
@@ -110,7 +136,7 @@ class PdfSignatureActivity : AppCompatActivity() {
                 currentPage = page
             }
             .password(null) // if password protected, then write password
-            .defaultPage(0) // set the default page to open
+            .defaultPage(currentPage) // set the default page to open
             .onPageError { _, _ ->
 
             }
@@ -120,7 +146,12 @@ class PdfSignatureActivity : AppCompatActivity() {
                 // spacing chỉ bật ở màn single page pdf sau khi user chọn để sign pdf
                 // màn đọc pdf phải bỏ đi
             .spacing(displayMetrics.heightPixels)
+            .enableDoubletap(false) // tắt zoom bằng click
             .load()
+
+        // tắt zoom swipe
+        // Case này k cần tương tác j nên set như này ok, vì n tắt cả scroll
+        pdf_view.setOnTouchListener(null)
     }
 
     private fun bitmapToFile(bitmap: Bitmap): String? {
@@ -186,7 +217,20 @@ class PdfSignatureActivity : AppCompatActivity() {
             Toast.makeText(this, "Insert Done - check internal cache storage", Toast.LENGTH_SHORT)
                 .show()
         } catch (ex: Exception) {
-            val x = 1
+            ex.printStackTrace()
         }
     }
+
+    override fun getSignatureView(): ImageView {
+        return image_signed
+    }
+
+    override fun getBitmapScale(): Float {
+        return signatureGestureHandler?.getImageScale() ?: 1f
+    }
+}
+
+interface IMagnifierInteraction {
+    fun getSignatureView(): ImageView
+    fun getBitmapScale(): Float
 }
