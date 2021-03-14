@@ -1,18 +1,16 @@
 package com.example.androidpdfsignature.signature
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.View
-import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.doOnNextLayout
 import androidx.lifecycle.lifecycleScope
 import com.example.androidpdfsignature.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -31,14 +29,11 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
 
-
-class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
+class PdfSignatureActivity : AppCompatActivity() {
 
     companion object {
         private const val PDF_NAME = "sample.pdf"
     }
-
-    private var signatureGestureHandler: SignatureGestureHandler? = null
 
     private var document: PDDocument? = null
 
@@ -47,6 +42,7 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
 
     private var currentPage = 0
     private val displayMetrics = DisplayMetrics()
+    private lateinit var cropTrimBitmap: Bitmap
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,27 +50,17 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
 
         if (document == null) document = PDDocument.load(assets.open(PDF_NAME))
 
-        // Tính screen size cho move x,y của signature img
+        // Tính screen size cho spacing cua pdf
         windowManager.defaultDisplay.getMetrics(displayMetrics)
-        signatureGestureHandler =
-            SignatureGestureHandler(
-                displayMetrics.widthPixels,
-                displayMetrics.heightPixels,
-                image_choose_pdf
-            )
 
         // show pdf view
         showPdfFromAssets()
-
-        // setup drag signature imageview
-        setupSignatureDrag()
 
         // Click mở signature pad lấy chữ kí
         button_signature?.setOnClickListener {
             layout_signature?.visibility = View.VISIBLE
             button_signature?.visibility = View.GONE
             button_attach_sign?.visibility = View.GONE
-            image_signed?.visibility = View.GONE
         }
 
         // Click save để lưu lại signature vào imageview
@@ -86,9 +72,7 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
             button_attach_sign?.visibility = View.VISIBLE
 
             val originBitmap = layout_signature.signature_pad.transparentSignatureBitmap
-            val cropTrimBitmap = CropTransparent().crop(originBitmap)
-            image_signed?.setImageBitmap(cropTrimBitmap)
-            image_signed?.visibility = View.VISIBLE
+            cropTrimBitmap = CropTransparent().crop(originBitmap)
 
             renderPdfToImage()
         }
@@ -97,10 +81,7 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
         button_attach_sign?.setOnClickListener {
             lifecycleScope.launch {
                 showLoading()
-                val drawable: BitmapDrawable =
-                    image_signed.drawable as BitmapDrawable
-                val bitmap: Bitmap = drawable.bitmap
-                val path = bitmapToFile(bitmap)
+                val path = bitmapToFile(cropTrimBitmap)
                 fillForm(path ?: return@launch)
                 showLoading(false)
                 Toast.makeText(
@@ -137,18 +118,12 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
             image_choose_pdf?.setImageBitmap(pageImage)
             image_choose_pdf?.visibility = View.VISIBLE
             pdf_view?.visibility = View.INVISIBLE
-            image_choose_pdf.setMagnifierInteraction(this@PdfSignatureActivity)
-            showLoading(false)
-        }
-    }
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun setupSignatureDrag() {
-        image_signed?.apply {
-            setOnTouchListener { view, event ->
-                signatureGestureHandler?.handleTouchAction(view, event)
-                true
+            // Why doOnNextLayout() -> check doc
+            image_choose_pdf?.doOnNextLayout {
+                image_choose_pdf.setUpMagnifinerBitmap(pageImage ?: return@doOnNextLayout, cropTrimBitmap)
             }
+            showLoading(false)
         }
     }
 
@@ -188,7 +163,7 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
             var file = wrapper.getDir("Images", Context.MODE_PRIVATE)
             file = File(file, "saved-signature.png")
 
-            val scaleByGesture = signatureGestureHandler?.getImageScale() ?: 1f
+            val scaleByGesture = image_choose_pdf?.getSignatureImageScale() ?: 1f
 
             try {
                 // Compress the bitmap and save in jpg format
@@ -222,9 +197,9 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
 
                 val insertImage = BitmapFactory.decodeFile(imagePath)
                 val insertXImage = LosslessFactory.createFromImage(document, insertImage)
-                val x = image_signed.x * (page!!.bBox.width / pageSize.width)
+                val x = image_choose_pdf.signatureBitmapX * (page!!.bBox.width / pageSize.width)
                 val y =
-                    (page!!.bBox.height - (image_signed.y * (page!!.bBox.height / pageSize.height)))
+                    (page!!.bBox.height - (image_choose_pdf.signatureBitmapY * (page!!.bBox.height / pageSize.height)))
 
                 contentStream.drawImage(
                     insertXImage,
@@ -246,20 +221,7 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
         }
     }
 
-    override fun getSignatureView(): ImageView {
-        return image_signed
-    }
-
-    override fun getBitmapScale(): Float {
-        return signatureGestureHandler?.getImageScale() ?: 1f
-    }
-
     private fun showLoading(show: Boolean = true) {
         view_loading.visibility = if (show) View.VISIBLE else View.GONE
     }
-}
-
-interface IMagnifierInteraction {
-    fun getSignatureView(): ImageView
-    fun getBitmapScale(): Float
 }
