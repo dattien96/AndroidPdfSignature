@@ -10,39 +10,39 @@
         android:id="@+id/pdf_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_alignParentTop="true"
-        android:layout_alignBottom="@id/view_divider"/>
+        android:layout_alignBottom="@id/view_divider"
+        android:layout_alignParentTop="true" />
 
     <View
         android:id="@+id/view_divider"
         android:layout_width="match_parent"
         android:layout_height="5dp"
-        android:background="@color/black"
-        android:layout_alignTop="@id/button_signature"/>
+        android:layout_alignTop="@id/button_signature"
+        android:background="@color/black" />
 
     <Button
         android:id="@+id/button_signature"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Get Signature"
         android:layout_alignParentRight="true"
-        android:layout_alignParentBottom="true"/>
+        android:layout_alignParentBottom="true"
+        android:text="Get Signature" />
 
     <Button
         android:id="@+id/button_attach_sign"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Attach Signature"
-        android:layout_alignParentBottom="true"/>
+        android:layout_alignParentBottom="true"
+        android:text="Attach Signature" />
 
     <com.example.androidpdfsignature.view_magnifier.ImageMagnifierView
         android:id="@+id/image_choose_pdf"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:adjustViewBounds="true"
         android:layout_alignParentTop="true"
+        android:adjustViewBounds="true"
         android:background="@drawable/image_view_border"
-        android:visibility="gone"/>
+        android:visibility="gone" />
 
     <ImageView
         android:id="@+id/image_signed"
@@ -56,4 +56,17 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="gone" />
+
+    <FrameLayout
+        android:id="@+id/view_loading"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:background="@color/white">
+
+        <ProgressBar
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"/>
+    </FrameLayout>
 </RelativeLayout>

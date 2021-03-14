@@ -13,6 +13,7 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.example.androidpdfsignature.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
@@ -21,6 +22,10 @@ import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import com.tom_roush.pdfbox.rendering.PDFRenderer
 import kotlinx.android.synthetic.main.activity_pdf_signature.*
 import kotlinx.android.synthetic.main.layout_insert_signature.view.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -30,7 +35,7 @@ import java.io.OutputStream
 class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
 
     companion object {
-        private const val PDF_NAME = "sample5.pdf"
+        private const val PDF_NAME = "sample.pdf"
     }
 
     private var signatureGestureHandler: SignatureGestureHandler? = null
@@ -59,7 +64,7 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
             )
 
         // show pdf view
-        showPdfFromAssets(PDF_NAME)
+        showPdfFromAssets()
 
         // setup drag signature imageview
         setupSignatureDrag()
@@ -90,11 +95,21 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
 
         // insert signature vào pdf
         button_attach_sign?.setOnClickListener {
-            val drawable: BitmapDrawable =
-                image_signed.drawable as BitmapDrawable
-            val bitmap: Bitmap = drawable.bitmap
-            val path = bitmapToFile(bitmap)
-            fillForm(path ?: return@setOnClickListener)
+            lifecycleScope.launch {
+                showLoading()
+                val drawable: BitmapDrawable =
+                    image_signed.drawable as BitmapDrawable
+                val bitmap: Bitmap = drawable.bitmap
+                val path = bitmapToFile(bitmap)
+                fillForm(path ?: return@launch)
+                showLoading(false)
+                Toast.makeText(
+                    this@PdfSignatureActivity,
+                    "Insert Done - check internal cache storage",
+                    Toast.LENGTH_SHORT
+                )
+                    .show()
+            }
         }
     }
 
@@ -103,20 +118,27 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
      * Phải đảm bảo hiển thị image này giống y hệt page pdf, cả về content và tọa độ
      */
     private fun renderPdfToImage() {
-        // Render the page and save it to an image file
-        try {
-            // Load in an already created PDF
-            val document: PDDocument = PDDocument.load(assets.open(PDF_NAME))
-            // Create a renderer for the document
-            val renderer = PDFRenderer(document)
-            // Render the image to an RGB Bitmap
-           val  pageImage = renderer.renderImage(currentPage, 1f, Bitmap.Config.ARGB_8888)
+        lifecycleScope.launch {
+            showLoading()
+            val pageImage = withContext(Dispatchers.IO) {
+                // Render the page and save it to an image file
+                try {
+                    // Load in an already created PDF
+                    val document: PDDocument = PDDocument.load(assets.open(PDF_NAME))
+                    // Create a renderer for the document
+                    val renderer = PDFRenderer(document)
+                    // Render the image to an RGB Bitmap
+                    renderer.renderImage(currentPage, 1f, Bitmap.Config.ARGB_8888)
+                } catch (e: IOException) {
+                    Log.e("PdfBox-Android-Sample", "Exception thrown while rendering file", e)
+                    null
+                }
+            }
             image_choose_pdf?.setImageBitmap(pageImage)
             image_choose_pdf?.visibility = View.VISIBLE
             pdf_view?.visibility = View.INVISIBLE
-            image_choose_pdf.setMagnifierInteraction(this)
-        } catch (e: IOException) {
-            Log.e("PdfBox-Android-Sample", "Exception thrown while rendering file", e)
+            image_choose_pdf.setMagnifierInteraction(this@PdfSignatureActivity)
+            showLoading(false)
         }
     }
 
@@ -130,8 +152,8 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
         }
     }
 
-    private fun showPdfFromAssets(pdfName: String) {
-        pdf_view.fromAsset(pdfName)
+    private fun showPdfFromAssets() {
+        pdf_view.fromAsset(PDF_NAME)
             .onPageChange { page, _ ->
                 currentPage = page
             }
@@ -141,10 +163,10 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
 
             }
             .enableSwipe(false)
-                // k đc dùng cái này mà phải define cụ thể spacing() -> xem doc
+            // k đc dùng cái này mà phải define cụ thể spacing() -> xem doc
 //            .autoSpacing(true)
-                // spacing chỉ bật ở màn single page pdf sau khi user chọn để sign pdf
-                // màn đọc pdf phải bỏ đi
+            // spacing chỉ bật ở màn single page pdf sau khi user chọn để sign pdf
+            // màn đọc pdf phải bỏ đi
             .spacing(displayMetrics.heightPixels)
             .enableDoubletap(false) // tắt zoom bằng click
             .load()
@@ -154,70 +176,73 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
         pdf_view.setOnTouchListener(null)
     }
 
-    private fun bitmapToFile(bitmap: Bitmap): String? {
-        if (document == null || page == null) return null
+    private suspend fun bitmapToFile(bitmap: Bitmap): String? = withContext(Dispatchers.IO) {
+        delay(1000)
+        if (document == null || page == null) {
+            null
+        } else {
+            // Get the context wrapper
+            val wrapper = ContextWrapper(applicationContext)
 
-        // Get the context wrapper
-        val wrapper = ContextWrapper(applicationContext)
+            // Initialize a new file instance to save bitmap object
+            var file = wrapper.getDir("Images", Context.MODE_PRIVATE)
+            file = File(file, "saved-signature.png")
 
-        // Initialize a new file instance to save bitmap object
-        var file = wrapper.getDir("Images", Context.MODE_PRIVATE)
-        file = File(file, "saved-signature.png")
+            val scaleByGesture = signatureGestureHandler?.getImageScale() ?: 1f
 
-        val scaleByGesture = signatureGestureHandler?.getImageScale() ?: 1f
-
-        try {
-            // Compress the bitmap and save in jpg format
-            val stream: OutputStream = FileOutputStream(file)
-            val pageSize = pdf_view.getPageSize(currentPage)
-            var scaleBitmap = Bitmap.createScaledBitmap(
-                bitmap,
-                (bitmap.width * (page!!.bBox.width / pageSize.width) * scaleByGesture).toInt(),
-                (bitmap.height * (page!!.bBox.height / pageSize.height) * scaleByGesture).toInt(),
-                false
-            )
-            scaleBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            stream.flush()
-            stream.close()
-        } catch (e: IOException) {
-            e.printStackTrace()
+            try {
+                // Compress the bitmap and save in jpg format
+                val stream: OutputStream = FileOutputStream(file)
+                val pageSize = pdf_view.getPageSize(currentPage)
+                var scaleBitmap = Bitmap.createScaledBitmap(
+                    bitmap,
+                    (bitmap.width * (page!!.bBox.width / pageSize.width) * scaleByGesture).toInt(),
+                    (bitmap.height * (page!!.bBox.height / pageSize.height) * scaleByGesture).toInt(),
+                    false
+                )
+                scaleBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                stream.flush()
+                stream.close()
+            } catch (e: IOException) {
+                e.printStackTrace()
+            }
+            file.absolutePath
         }
-        return file.absolutePath
     }
 
-    private fun fillForm(imagePath: String) {
-        if (document == null || page == null) return
-        try {
-            var contentStream = PDPageContentStream(document, page, true, true)
+    private suspend fun fillForm(imagePath: String) = withContext(Dispatchers.IO) {
+        if (document == null || page == null) {
 
-            // Draw the red overlay image
-            val pageSize = pdf_view.getPageSize(currentPage)
+        } else {
+            try {
+                var contentStream = PDPageContentStream(document, page, true, true)
 
-            val insertImage = BitmapFactory.decodeFile(imagePath)
-            val insertXImage = LosslessFactory.createFromImage(document, insertImage)
-            val x = image_signed.x * (page!!.bBox.width / pageSize.width)
-            val y =
-                (page!!.bBox.height - (image_signed.y * (page!!.bBox.height / pageSize.height)))
+                // Draw the red overlay image
+                val pageSize = pdf_view.getPageSize(currentPage)
 
-            contentStream.drawImage(
-                insertXImage,
-                x,
-                y - insertImage.height
-            )
-            contentStream.fill()
-            // Make sure that the content stream is closed:
-            contentStream.close()
+                val insertImage = BitmapFactory.decodeFile(imagePath)
+                val insertXImage = LosslessFactory.createFromImage(document, insertImage)
+                val x = image_signed.x * (page!!.bBox.width / pageSize.width)
+                val y =
+                    (page!!.bBox.height - (image_signed.y * (page!!.bBox.height / pageSize.height)))
 
-            val paths: String = applicationContext.cacheDir.absolutePath + "/FilledForm.pdf"
+                contentStream.drawImage(
+                    insertXImage,
+                    x,
+                    y - insertImage.height
+                )
+                contentStream.fill()
+                // Make sure that the content stream is closed:
+                contentStream.close()
 
-            document!!.save(paths)
-            document!!.close()
-            document = null
+                val paths: String = applicationContext.cacheDir.absolutePath + "/FilledForm.pdf"
 
-            Toast.makeText(this, "Insert Done - check internal cache storage", Toast.LENGTH_SHORT)
-                .show()
-        } catch (ex: Exception) {
-            ex.printStackTrace()
+                document!!.save(paths)
+                document!!.close()
+                document = null
+            } catch (ex: Exception) {
+                ex.printStackTrace()
+            }
         }
     }
 
@@ -227,6 +252,10 @@ class PdfSignatureActivity : AppCompatActivity(), IMagnifierInteraction {
 
     override fun getBitmapScale(): Float {
         return signatureGestureHandler?.getImageScale() ?: 1f
+    }
+
+    private fun showLoading(show: Boolean = true) {
+        view_loading.visibility = if (show) View.VISIBLE else View.GONE
     }
 }
 
