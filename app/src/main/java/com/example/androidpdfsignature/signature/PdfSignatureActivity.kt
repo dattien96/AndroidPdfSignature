@@ -13,12 +13,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.doOnNextLayout
 import androidx.lifecycle.lifecycleScope
 import com.example.androidpdfsignature.R
-import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
-import com.tom_roush.pdfbox.pdmodel.encryption.ProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import com.tom_roush.pdfbox.rendering.PDFRenderer
@@ -36,12 +33,12 @@ import java.io.OutputStream
 class PdfSignatureActivity : AppCompatActivity() {
 
     companion object {
-        private const val PDF_NAME = "sample5.pdf"
+        private const val PDF_NAME = "sample10.pdf"
     }
 
     private var document: PDDocument? = null
 
-    private var currentPage = 0
+    private var currentPage = 22
     private val displayMetrics = DisplayMetrics()
     private lateinit var cropTrimBitmap: Bitmap
 
@@ -111,7 +108,7 @@ class PdfSignatureActivity : AppCompatActivity() {
                     val renderer = PDFRenderer(document)
                     // Render the image to an RGB Bitmap
                     renderer.renderImage(currentPage, 1f, Bitmap.Config.RGB_565)
-                } catch (e: IOException) {
+                } catch (e: Exception) {
                     Log.e("PdfBox-Android-Sample", "Exception thrown while rendering file", e)
                     null
                 }
