@@ -13,6 +13,9 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintDimensionRatio="16:9"
         app:layout_constraintTop_toTopOf="parent"
+        app:penMaxWidth="4dp"
+        app:penMinWidth="2dp"
+        app:clearOnDoubleClick="true"
         app:penColor="@android:color/black" />
 
     <Button

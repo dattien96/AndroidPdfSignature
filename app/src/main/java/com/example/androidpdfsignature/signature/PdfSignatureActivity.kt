@@ -13,6 +13,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.doOnNextLayout
 import androidx.lifecycle.lifecycleScope
 import com.example.androidpdfsignature.R
+import com.example.androidpdfsignature.image_util.resizeBitmapSize
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
@@ -177,7 +178,7 @@ class PdfSignatureActivity : AppCompatActivity() {
                         bitmap,
                         (bitmap.width * (page.bBox.width / pageSize.width) * scaleByGesture).toInt(),
                         (bitmap.height * (page.bBox.height / pageSize.height) * scaleByGesture).toInt(),
-                        false
+                        true
                     )
                     scaleBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
                     stream.flush()
